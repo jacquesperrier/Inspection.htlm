@@ -4,24 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ronde de Sécurité</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 15px; background: #f4f7f6; }
+        body { font-family: sans-serif; padding: 10px; background: #f4f7f6; }
         .item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #ddd; }
         .btns { display: flex; gap: 10px; margin-top: 10px; }
-        button { padding: 10px 20px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; font-weight: bold; }
+        button { padding: 12px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; font-weight: bold; }
         .ok.active { background: #27ae60; color: white; }
         .bad.active { background: #e74c3c; color: white; }
-        .defect-area { display: none; margin-top: 10px; border-top: 1px dashed #e74c3c; padding-top: 10px; }
-        textarea { width: 100%; height: 60px; margin-top: 5px; }
-        #sig { border: 2px dashed #999; width: 100%; height: 150px; background: #fff; margin-top: 10px; }
+        .defect-area { display: none; margin-top: 10px; background: #fff5f5; padding: 10px; }
+        textarea { width: 100%; height: 60px; margin-bottom: 10px; }
+        canvas { border: 2px dashed #999; width: 100%; height: 150px; background: #fff; touch-action: none; }
     </style>
 </head>
 <body>
-    <h1>🚛 Ronde de Sécurité</h1>
-    <input type="text" id="driver" placeholder="Nom du Chauffeur" style="width:100%; padding:10px; margin-bottom:10px;">
-    <input type="text" id="unit" placeholder="Camion #" style="width:100%; padding:10px; margin-bottom:10px;">
+    <h2 style="text-align:center;">🚛 Ronde de Sécurité</h2>
+    <div class="item">
+        <input type="text" id="driver" placeholder="Nom du Chauffeur" style="width:100%; padding:10px; margin-bottom:10px; border:1px solid #ddd;">
+        <input type="text" id="unit" placeholder="Camion #" style="width:100%; padding:10px; border:1px solid #ddd;">
+    </div>
 
     <div id="checklist"></div>
 
@@ -31,28 +33,27 @@
         <button onclick="clearSig()">Effacer</button>
     </div>
 
-    <button onclick="submitForm()" style="width:100%; padding:20px; background:#27ae60; color:white; font-size:1.2rem;">SOUMETTRE</button>
-
-    <div id="confirm" style="display:none; text-align:center; padding:20px;">
-        <h2>✅ ENVOYÉ</h2>
-        <button onclick="downloadPDF()" style="background:#e67e22; color:white; padding:15px; width:100%;">TÉLÉCHARGER LE PDF</button>
-    </div>
+    <button onclick="envoyerRapport()" id="mainBtn" style="width:100%; padding:20px; background:#27ae60; color:white; font-size:1.2rem; border:none; border-radius:10px;">✅ ENVOYER ET CRÉER PDF</button>
 
     <script>
-        const tasks = ["Freins", "Pneus", "Lumières", "Direction", "Attelage", "Niveaux d'huile", "Miroirs", "Essuie-glaces"];
+        // Initialisation avec ta Public Key officielle
+        (function() { emailjs.init("_Nvq5id_TVKKPb8mF"); })(); 
+
+        const tasks = ["Freins", "Pneus", "Lumieres", "Direction", "Attelage", "Huile et Fluides", "Miroirs", "Essuie-glaces"];
         const checklist = document.getElementById('checklist');
-        let results = {};
 
         tasks.forEach(t => {
             const div = document.createElement('div');
             div.className = 'item';
-            div.innerHTML = `<strong>${t}</strong><div class="btns">
-                <button onclick="setStatus('${t}','OK',this)" class="ok">OK</button>
-                <button onclick="setStatus('${t}','X',this)" class="bad">X</button>
+            div.innerHTML = `<strong>${t}</strong>
+            <div class="btns">
+                <button type="button" onclick="setStatus('${t}','OK',this)" class="ok">OK</button>
+                <button type="button" onclick="setStatus('${t}','X',this)" class="bad">X</button>
             </div>
             <div id="area-${t}" class="defect-area">
-                <textarea placeholder="Détails du problème..."></textarea>
-                <input type="file" accept="image/*" capture="camera">
+                <textarea id="txt-${t}" placeholder="Détails du problème..."></textarea>
+                <input type="file" id="f-${t}" accept="image/*" capture="camera" style="display:none">
+                <button type="button" onclick="document.getElementById('f-${t}').click()" style="background:#9b59b6; color:white; width:100%; border:none; padding:10px;">📷 PHOTO DU DÉFAUT</button>
             </div>`;
             checklist.appendChild(div);
         });
@@ -60,34 +61,49 @@
         function setStatus(t, s, btn) {
             btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            results[t] = s;
             document.getElementById('area-'+t).style.display = (s === 'X') ? 'block' : 'none';
         }
 
         const canvas = document.getElementById('sig');
         const ctx = canvas.getContext('2d');
-        canvas.width = canvas.offsetWidth;
-        canvas.height = 150;
         let drawing = false;
+        canvas.width = canvas.offsetWidth;
         canvas.onmousedown = canvas.ontouchstart = (e) => { drawing = true; ctx.beginPath(); };
-        canvas.onmouseup = canvas.ontouchend = () => { drawing = false; };
+        canvas.onmouseup = canvas.ontouchend = () => drawing = false;
         canvas.onmousemove = canvas.ontouchmove = (e) => {
             if(!drawing) return;
             const r = canvas.getBoundingClientRect();
             const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
             const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
             ctx.lineTo(x, y); ctx.stroke();
+            if(e.touches) e.preventDefault();
         };
         function clearSig() { ctx.clearRect(0,0,canvas.width,canvas.height); }
 
-        function submitForm() {
-            document.getElementById('confirm').style.display = 'block';
-            window.scrollTo(0, document.body.scrollHeight);
-        }
+        function envoyerRapport() {
+            const btn = document.getElementById('mainBtn');
+            const unit = document.getElementById('unit').value;
+            const driver = document.getElementById('driver').value;
+            
+            if(!unit || !driver) { alert("Veuillez entrer le nom et le numéro d'unité !"); return; }
+            
+            btn.innerText = "Envoi en cours...";
 
-        function downloadPDF() {
-            const element = document.body;
-            html2pdf().from(element).save('Inspection.pdf');
+            // Envoi avec tes codes : service_t31ah75 et template_a3zj2se
+            emailjs.send("service_t31ah75", "template_a3zj2se", {
+                unit: unit,
+                driver: driver,
+                message: "Inspection complétée pour l'unité " + unit
+            }).then(() => {
+                alert("Rapport envoyé à jacquesperrier.auditeur@gmail.com !");
+                html2pdf().from(document.body).save('Inspection_' + unit + '.pdf');
+                btn.innerText = "✅ ENVOYÉ - PDF CRÉÉ";
+            }).catch((err) => {
+                console.log(err);
+                alert("Erreur d'envoi. Le PDF sera tout de même créé.");
+                html2pdf().from(document.body).save('Inspection.pdf');
+                btn.innerText = "PDF CRÉÉ";
+            });
         }
     </script>
 </body>
