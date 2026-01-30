@@ -1,1 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inspection Camion</title>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 10px; background: #f4f7f6; margin: 0; }
+        .container { background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; max-width: 600px; margin: auto; }
+        .item { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .btns { display: flex; gap: 10px; margin: 10px 0; }
+        button { padding: 10px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; font-weight: bold; }
+        .ok.active { background: #27ae60; color: white; }
+        .bad.active { background: #e74c3c; color: white; }
+        canvas { border: 1px solid #000; width: 100%; height: 150px; background: #fff; touch-action: none; }
+        #mainBtn { width: 100%; padding: 20px; background: #2980b9; color: white; font-size: 1.2rem; border: none; border-radius: 10px; margin-top: 20px; }
+    </style>
+</head>
+<body>
 
+<div id="capture">
+    <div class="container">
+        <h2 style="text-align:center;">🚛 Ronde de Sécurité</h2>
+        <p><b>Chauffeur :</b> <input type="text" id="driver" style="width:100%; border:none; border-bottom:1px solid #000;"></p>
+        <p><b>Camion # :</b> <input type="text" id="unit" style="width:100%; border:none; border-bottom:1px solid #000;"></p>
+        
+        <div id="checklist"></div>
+
+        <div style="margin-top:20px;">
+            <h3>✍️ Signature</h3>
+            <canvas id="sig"></canvas>
+        </div>
+    </div>
+</div>
+
+<button onclick="traiterFormulaire()" id="mainBtn">📥 CRÉER LE PDF & ENVOYER</button>
+
+<script>
+    // Initialisation avec ta clé
+    (function() { emailjs.init("_Nvq5id_TVKKPb8mF"); })();
+
+    const tasks = ["Freins", "Pneus", "Lumières", "Direction", "Attelage", "Huile et Fluides", "Miroirs", "Essuie-glaces"];
+    const checklist = document.getElementById('checklist');
+
+    tasks.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<strong>${t} : </strong>
+            <button type="button" onclick="this.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active'));this.classList.add('active')" class="ok">OK</button>
+            <button type="button" onclick="this.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active'));this.classList.add('active')" class="bad">DÉFAUT</button>`;
+        checklist.appendChild(div);
+    });
+
+    // Code Signature simple
+    const canvas = document.getElementById('sig');
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    canvas.width = canvas.offsetWidth;
+    canvas.onmousedown = canvas.ontouchstart = (e) => { drawing = true; ctx.beginPath(); };
+    canvas.onmouseup = canvas.ontouchend = () => drawing = false;
+    canvas.onmousemove = canvas.ontouchmove = (e) => {
+        if(!drawing) return;
+        const r = canvas.getBoundingClientRect();
+        const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+        const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+        ctx.lineTo(x, y); ctx.stroke();
+        e.preventDefault();
+    };
+
+    function traiterFormulaire() {
+        const btn = document.getElementById('mainBtn');
+        btn.innerText = "Génération du PDF...";
+        btn.style.background = "#bdc3c7";
+
+        // ON GÉNÈRE LE PDF EN PREMIER (Quoi qu'il arrive)
+        const element = document.getElementById('capture');
+        const opt = {
+            margin: 0.3,
+            filename: 'Inspection.pdf',
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+
+        html2pdf().set(opt).from(element).save().then(() => {
+            // APRÈS le PDF, on tente l'envoi courriel
+            btn.innerText = "Envoi du courriel...";
+            
+            emailjs.send("service_t31ah75", "template_a3zj2se", {
+                driver: document.getElementById('driver').value,
+                unit: document.getElementById('unit').value
+            }).then(() => {
+                alert("Tout est réussi ! PDF créé et courriel envoyé.");
+                btn.innerText = "✅ TERMINÉ";
+                btn.style.background = "#27ae60";
+            }).catch((err) => {
+                alert("PDF créé, mais le courriel n'est pas parti. Vérifiez EmailJS.");
+                btn.innerText = "⚠️ PDF CRÉÉ SEULEMENT";
+            });
+        });
+    }
+</script>
+</body>
+</html>
